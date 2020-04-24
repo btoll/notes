@@ -1,0 +1,15 @@
+dpkg-query --control-list algorand
+dpkg-query --control-show algorand postinst
+dpkg-query --control-path algorand
+dpkg-query --status algorand
+dpkg-query -W --showformat='${Status}' algorand
+dpkg-query -W --showformat='${Package}' algorand
+dpkg-query --show --showformat='${Package}' "algorand*"
+dpkg-query --show --showformat='${Package} : ${Status}' "algorand*"
+dpkg-query --show --showformat='${Package} : ${Status} : ${Version}' 'algorand*'
+
+# A purged package won't show up in this list.
+vagrant@ubuntu-bionic:~/aptly/public$ dpkg-query --show --showformat='${Package} : ${Status} : ${Version}\n' 'algorand*'
+	algorand : install ok installed : 2.0.66821
+	algorand-beta : deinstall ok config-files : 2.0.66604
+

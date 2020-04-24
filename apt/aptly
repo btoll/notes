@@ -1,0 +1,196 @@
+https://www.aptly.info/doc/overview/
+https://www.unixmen.com/introducing-aptly-a-debian-repository-management-tool/
+https://blog.plista.com/aptly-debian-repositories/
+
+------------------------------------------------------------
+
+`dpkg-divert` to install multiple packages with same control files
+
+http://manpages.ubuntu.com/manpages/precise/en/man8/dpkg-divert.8.html
+https://askubuntu.com/questions/396195/how-to-avoid-trying-to-overwrite-x-which-is-also-in-package-y
+
+------------------------------------------------------------
+
+# Creates ~/aptly/db
+$HOME/go/bin/aptly -config="${HOME}"/.aptly.conf repo create -distribution=stable -component=main algorand
+
+# Creates ~/aptly/pool
+$HOME/go/bin/aptly -config="${HOME}"/.aptly.conf repo add algorand
+${HOME}/node_pkg/*.deb
+SNAPSHOT=algorand-$(date +%Y%m%d_%H%M%S)
+$HOME/go/bin/aptly -config="${HOME}"/.aptly.conf snapshot create
+${SNAPSHOT} from repo algorand
+
+# Creates ~/aptly/public
+$HOME/go/bin/aptly -config="${HOME}"/.aptly.conf publish snapshot -gpg-key=dev@algorand.com -origin=Algorand -label=Algorand "${SNAPSHOT}" "s3:ben-test-2.0.3:"
+
+------------------------------------------------------------
+
+cat <<EOF>"${HOME}"/.aptly.conf
+{
+  "rootDir": "${HOME}/aptly",
+  "downloadConcurrency": 4,
+  "downloadSpeedLimit": 0,
+  "architectures": [],
+  "dependencyFollowSuggests": false,
+  "dependencyFollowRecommends": false,
+  "dependencyFollowAllVariants": false,
+  "dependencyFollowSource": false,
+  "dependencyVerboseResolve": false,
+  "gpgDisableSign": false,
+  "gpgDisableVerify": false,
+  "gpgProvider": "gpg",
+  "downloadSourcePackages": false,
+  "skipLegacyPool": true,
+  "ppaDistributorID": "ubuntu",
+  "ppaCodename": "",
+  "skipContentsPublishing": false,
+  "FileSystemPublishEndpoints": {},
+  "S3PublishEndpoints": {
+    "ben-test-2.0.3": {
+      "region":"us-east-1",
+      "bucket":"ben-test-2.0.3",
+      "acl":"public-read",
+      "prefix":"deb"
+    }
+  },
+  "SwiftPublishEndpoints": {}
+}
+EOF
+
+------------------------------------------------------------
+
+If getting the following error when trying to publish:
+
+ERROR: unable to publish: unable to process packages: error caching paths under prefix: error listing under prefix deb/ in S3: us-eas
+t-1:ben-test-2.0.3/deb: NoCredentialProviders: no valid providers in chain. Deprecated.
+        For verbose messaging see aws.Config.CredentialsChainVerboseErrors
+
+Install `awscli` package and then run `aws configure`.  I found that setting the creds as environment variables wasn't working.
+
+sudo apt install awscli
+
+https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html
+
+------------------------------------------------------------
+
+gpg --export btoll | sudo apt-key add -
+sudo add-apt-repository "deb http://127.0.0.1:8080 stable main"
+sudo add-apt-repository "deb http://127.0.0.1:8080 beta main"
+
+aptly serve (127.0.0.1:8080)
+
+sudo apt update
+
+------------------------------------------------------------
+
+aptly repo create -distribution="stable" -architectures="amd64" -component="main" -comment="mainnet" algorand
+aptly repo create -distribution="beta" -architectures="amd64" -component="main" -comment="betanet" algorand-beta
+aptly repo create -distribution="nightly" -architectures="amd64" -component="main" -comment="devnet" algorand-nightly
+
+aptly repo list
+
+List of local repos:
+ * [algorand-beta]: betanet (packages: 2)
+ * [algorand-nightly]: devnet (packages: 0)
+ * [algorand]: mainnet (packages: 4)
+
+aptly repo add algorand /vagrant/deb/algorand_stable_linux*.deb
+aptly repo add algorand-beta /vagrant/deb/algorand_2.0.64*
+
+aptly repo add algorand *.deb
+SNAPSHOT=algorand-$(date +%Y%m%d_%H%M%S)
+aptly snapshot create "${SNAPSHOT}" from repo algorand
+aptly publish snapshot -origin="Algorand" -label="Algorand" "${SNAPSHOT}" "s3:${APTLY_S3_NAME}:"
+aptly publish switch stable "s3:${APTLY_S3_NAME}:" "${SNAPSHOT}"
+
+
+├── dists                                                                                                                    [3/4675]
+│   ├── beta
+│   │   ├── InRelease
+│   │   ├── Release
+│   │   ├── Release.gpg
+│   │   └── main
+│   │       ├── Contents-amd64.gz
+│   │       └── binary-amd64
+│   │           ├── Packages
+│   │           ├── Packages.bz2
+│   │           ├── Packages.gz
+│   │           └── Release
+│   └── stable
+│       ├── InRelease
+│       ├── Release
+│       ├── Release.gpg
+│       └── main
+│           ├── Contents-amd64.gz
+│           └── binary-amd64
+│               ├── Packages
+│               ├── Packages.bz2
+│               ├── Packages.gz
+│               └── Release
+└── pool
+    └── main
+        └── a
+            ├── algorand
+            │   ├── algorand_stable_linux-amd64_2.0.1.deb
+            │   ├── algorand_stable_linux-amd64_2.0.2.deb
+            │   ├── algorand_stable_linux-amd64_2.0.3.deb
+            │   └── algorand_stable_linux-amd64_2.0.4.deb
+            └── algorand-beta
+                ├── algorand_2.0.64818_amd64.deb
+                └── algorand_2.0.64923_amd64.deb
+
+sudo apt install algorand=2.0.2
+sudo apt install algorand-beta=2.0.64818
+
+------------------------------------------------------------
+
+# To get dpkg-scanpackages.
+sudo apt install dpkg-dev
+dpkg-scanpackages -m . | gzip -c > Packages.gz
+
+deb http://127.0.0.1:8111 ./
+
+You will get the following error unless you mark the repo as trusted:
+
+    E: The repository 'http://127.0.0.1:8111 ./ Release' does not have a Release file.
+    N: Updating from such a repository can't be done securely, and is therefore disabled by default.
+    N: See apt-secure(8) manpage for repository creation and user configuration details.
+
+deb [trusted=yes] http://127.0.0.1:8111 ./
+
+./httd.py &
+sudo apt-update
+
+sudo apt list --upgradable
+
+If you get the following error, throttle the accepted arch:
+
+    N: Skipping acquire of configured file 'main/binary-i386/Packages' as repository 'https://releases.algorand.com/deb stable InRelease doesn't support architecture 'i386'
+
+deb [arch=amd64] https://releases.algorand.com/deb/ stable main
+
+------------------------------------------------------------
+
+# Adding published snapshot.
+
+aptly publish list
+aptly publish drop beta
+aptly snapshot drop beta-snappy-0
+aptly repo drop algorand-beta
+
+aptly repo create -distribution="beta" -architectures="amd64" -component="main" -comment="betanet" algorand-beta
+aptly repo add algorand-beta /vagrant/deb/algorand_2.0.6*
+aptly snapshot create beta-snappy-0 from repo algorand-beta
+aptly publish snapshot beta-snappy-0
+
+deb http://127.0.0.1:8111 stable main
+deb http://127.0.0.1:8111 beta main
+
+sudo apt update
+
+# Removing published snapshot.
+aptly publish drop beta
+aptly snapshot drop beta-snappy-0
+aptly repo drop algorand-beta
+

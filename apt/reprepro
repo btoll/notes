@@ -1,0 +1,128 @@
+https://www.debian.org/doc/manuals/apt-howto/
+https://www.debian.org/doc/manuals/repository-howto/repository-howto
+
+https://www.codepool.biz/linux-debian-reporisory-reprepro.html
+https://www.digitalocean.com/community/tutorials/how-to-use-reprepro-for-a-secure-package-repository-on-ubuntu-14-04
+
+------------------------------------------------------------
+
+Using `s3cmd` utility to push to s3.
+
+https://xn.pinkhamster.net/blog/tech/host-a-debian-repository-on-s3.html
+https://zcox.wordpress.com/2012/08/13/hosting-a-private-apt-repository-on-s3/
+
+------------------------------------------------------------
+
+https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html
+reprepro
+- https://packages.debian.org/search?keywords=reprepro
+- https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=570623
+
+- https://github.com/ionos-enterprise/reprepro
+- https://wikitech.wikimedia.org/wiki/Reprepro
+- https://www.digitalocean.com/community/tutorials/how-to-use-reprepro-for-a-secure-package-repository-on-ubuntu-14-04
+
+- https://serverfault.com/questions/556206/create-debian-repository-with-multiple-packages-verions/949880
+
+- https://apt.postgresql.org/pub/repos/apt/dists/wheezy-pgdg/
+- https://apt.postgresql.org/pub/repos/apt/README
+- https://wiki.postgresql.org/wiki/Apt
+
+- http://mariadb.mirror.globo.tech/repo/
+
+installing
+    https://www.digitalocean.com/community/tutorials/how-to-use-reprepro-for-a-secure-package-repository-on-ubuntu-14-04
+
+    (postgresql for example of repo structure)
+    sudo apt-get update && sudo apt-get upgrade -y
+    sudo apt-get install reprepro rng-tools -y
+    sudo apt-get install  -y
+    sudo rngd -r /dev/urandom
+
+    gpg --full-generate-key
+    gpg --edit-key (addkey)(save)
+
+    gpg --export-secret-key 3DADAC957CEDE2A53A090877127ECCE051505BA3 > private.key
+    gpg --export 3DADAC957CEDE2A53A090877127ECCE051505BA3 >> private.key
+
+    gpg --export-secret-subkeys 3DADAC957CEDE2A53A090877127ECCE051505BA3 > signing.key
+    gpg --export 3DADAC957CEDE2A53A090877127ECCE051505BA3 > public.key
+
+    gpg -K --with-subkey-fingerprint
+    gpg --export-secret-subkeys 6F0CAF8BE9B6960B34246CCA77C69712438B211E > signing.key
+
+    gpg --delete-secret-key 3DADAC957CEDE2A53A090877127ECCE051505BA3
+    gpg --import public.key signing.key
+    gpg -K
+
+    # so now only signing key is in the keyring
+    # Notice the # after sec. This means our master key is not installed. The server contains only our signing subkey.
+
+    sudo apt-key add signing.key
+
+    sudo mkdir -p /var/repositories/
+    cd /var/repositories/
+    sudo mkdir conf
+    cd conf
+
+    echo -e "ask-passphrase\nbasedir /var/repositories\npriority standard\nverbose\n" | sudo tee options
+
+    cat | sudo tee distributions
+    Origin: releases.algorand.com
+    Label: releases.algorand.com
+    Codename: algorand
+    Components: main 2.0.3 2.0.2 2.0.1
+    Architectures: amd64
+    SignWith: 6F0CAF8BE9B6960B34246CCA77C69712438B211E
+
+    Origin: releases.algorand.com
+    Label: releases.algorand.com
+    Codename: algorand-beta
+    Components: main 1.0.0 2.0.10
+    Architectures: amd64
+    SignWith: 6F0CAF8BE9B6960B34246CCA77C69712438B211E
+
+adding packages
+    sudo reprepro -b /var/repositories -S algorand -P standard -C main includedeb algorand /vagrant/deb/algorand_stable_linux-amd64_2.0.4.deb
+    sudo reprepro -b /var/repositories -S algorand -P standard -C 2.0.3 includedeb algorand /vagrant/deb/algorand_stable_linux-amd64_2.0.3.deb
+    sudo reprepro -b /var/repositories -S algorand -P standard -C 2.0.2 includedeb algorand /vagrant/deb/algorand_stable_linux-amd64_2.0.2.deb
+    sudo reprepro -b /var/repositories -S algorand -P standard -C 2.0.1 includedeb algorand /vagrant/deb/algorand_stable_linux-amd64_2.0.1.deb
+
+    sudo reprepro -b /var/repositories/ list algorand
+    algorand|main|amd64: algorand 2.0.4
+    algorand|2.0.3|amd64: algorand 2.0.3
+    algorand|2.0.2|amd64: algorand 2.0.2
+    algorand|2.0.1|amd64: algorand 2.0.1
+
+    sudo reprepro -b /var/repositories -S algorand-beta -P standard -C main includedeb algorand-beta /vagrant/deb/algorand_1.0.64923_amd64.deb
+
+    sudo reprepro -b /var/repositories/ list algorand-beta
+    algorand-beta|main|amd64: algorand-beta 2.0.64923
+
+    { start python local server }
+
+    sudo add-apt-repository "deb http://127.0.0.1:8111 algorand main 2.0.3 2.0.2 2.0.1"
+    sudo add-apt-repository "deb http://127.0.0.1:8111 algorand-beta 2.0.10 1.0.0"
+    sudo apt-get update
+
+    sudo apt-get install algorand=2.0.1
+
+other commands
+    list all packages for algorand:
+        reprepro ls PACKAGE_NAME
+        reprepro ls algorand
+
+    list all packages in a given distribution:
+        reprepro list DISTRIBUTION_NAME
+        reprepro list algorand
+        reprepro list algorand-beta
+
+----------
+
+Packages must have their package name match the distro!
+
+We need to make a change to:
+    installer/debian/control
+
+and pass in the package name per build!
+
