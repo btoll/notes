@@ -1,0 +1,39 @@
+a package is a directory containing __init__.py
+__init__.py is sourced when imported as a package
+<module>.__file__ points to the __init__.py file in the imported package
+relative import syntax: from ..module_name import name
+__all__: lets you control what attributes are imported from "from module import *" behavior
+if not specified, import all public names (everything without leading _)
+must be a list of strings
+for example, in __init__.py you could add: __all__ = ["foo", "bar"]
+it's still recommended not to use "import *" in general
+
+packages are modules that can contain other modules and packages
+( packages can contain subpackages )
+
+if you have a src/ dir between the project root and the package then if the project root is
+in sys.path the package won't be importable. this is important and means that you're only
+working with installed packages
+
+__main__.py is needed when creating an executable directory
+
+------------------------------------------------------------
+
+namespace package: a package which is spread over several directories with each directory tree contributing to a single logical package from the dev's point of view
+
+they cannot have __init__.py files (they can't have package-level initialization code- nothing will be sourced when it's imported)
+
+namespace package discovery algorithm:
+
+when asked to import:
+- scans each dir in sys.path
+- if finds "foo" containing __init__.py then a normal package is imported
+- if it doesn't find any normal packages but finds a foo.py or any other file that can act as a module then this module is imported instead
+- otherwise, the import mechanism keeps track of any dirs it finds that are named "foo" and if no normal modules or packages are found which satisfy the import, then all the matching dir names act as parts of a namespace package
+
+------------------------------------------------------------
+
+if you put a __main__.py file in a package directory, then it will be executed when you run the package using `python -m`.
+
+executable directories are added to sys.path when executed
+

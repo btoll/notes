@@ -1,0 +1,22 @@
+- Describe a canary deployment and a blue-green deployment.  What are the differences and what is the intent of each?
+
+- What is the difference between `git diff` and `git diff --cached`?
+    /*{{{*/
+    + git diff
+        - The diff between the working area and the index.
+    + git diff --cached
+        - The diff between the staging area and the repository.
+    /*}}}*/
+
+- How would you revert a single file from the staging area?
+    /*{{{*/
+    + git reset HEAD filename.txt
+    /*}}}*/
+
+- How would you revert a single file from the unstaged (working) area?
+    /*{{{*/
+    + git checkout -- filename.txt
+    /*}}}*/
+
+- Tell me about the releases that you were responsible for.
+

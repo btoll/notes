@@ -1,0 +1,592 @@
+Create a cluster in GKE:
+
+	gcloud container clusters create kuar-cluster
+	gcloud auth application-default login
+
+Check cluster status:
+
+	kubectl version
+	- if problems, check ~/.kube/config
+
+Check diagnostic information:
+
+	kubectl get componentstatuses
+	- You can see here the components that make up the Kubernetes cluster. The
+	controller-manager is responsible for running various controllers that regulate
+	behavior in the cluster; for example, ensuring that all of the replicas of a service are
+	available and healthy. The scheduler is responsible for placing different Pods onto
+	different nodes in the cluster. Finally, the etcd server is the storage for the cluster
+	where all of the API objects are stored
+
+List worker nodes:
+
+	kubectl get nodes
+
+Describe a node:
+
+	kubectl describe nodes gke-kuar-cluster-default-pool-2d00a99f-6kbr
+
+If the cluster runs the k8s proxy with a DaemonSet, see the proxies that are responsible for routing network
+traffic to load-balanced services running in the cluster.  The proxy must be present on every node.
+( The kube-proxy container must be running on all nodes in a cluster. )
+
+	kubectl get daemonSets --namespace=kube-system kube-proxy
+
+View DNS server for a cluster (run as a k8s deployment):
+
+	kubectl get deployments --namespace kube-system kube-dns
+
+There is also a service that performs load-balancing for the DNS server:
+
+	kubectl get services --namespace kube-system kube-dns
+
+Deploy the dashboard UI:
+
+	kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.0/aio/deploy/recommended.yaml
+
+Start proxy:
+
+	kubectl proxy
+
+Run in browser:
+
+	http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/
+
+View a k8s object representation:
+
+    curl 127.0.0.1:8001/api/v1/namespaces/default/services/kubernetes
+
+( Every object in k8s is represented by a RESTful resource. )
+
+To get more info:
+
+    kubectl get services kubernetes -o wide
+    kubectl get services kubernetes -o json
+    kubectl get services kubernetes -o yaml
+
+To remove headers:
+
+    kubectl get services kubernetes --no-headers
+
+To extract specific fields:
+
+    kubectl get services kubernetes -o jsonpath --template={.spec.clusterIP}
+
+Create/update an object in k8s:
+
+    kubectl apply -f obj.yaml
+
+Edit an object:
+
+    kubectl edit services kubernetes
+
+To view and edit an object's annotations (annotations within an object):
+
+    kubectl apply -f myobj.yaml {edit,set,view}-last-applied
+    ( `view-last-applied` shows the last state that was applied to the object. )
+
+Add labels and annotations:
+
+    kubectl label pods bar color=red
+    kubectl annotation pods bar color=red
+
+Overwrite an existing label:
+
+    kubectl label pods bar color=red --overwrite
+
+Remove a label:
+
+    kubectl label pods bar color-
+
+View logs of a pod:
+
+    kubectl logs <pod-name>
+
+    ( Multi-container pods can choose the container using the `-c` flag. )
+
+Stream logs of a pod:
+
+    kubectl logs <pod-name> -f
+
+Add the `--previous` flag to get logs from the previous instance of the container:
+
+    kubectl logs <pod-name> --previous
+
+    ( Useful if there are problems at startup. )
+
+Execute a command in a running container:
+
+    kubectl exec <pod-name> date
+
+Get an interactive shell in a container:
+
+    kubectl exec -it <pod-name> -- bash
+
+or attach to a running container process if there is no terminal:
+
+    kubectl attach -it <pod-name>
+    ( Can send input to process - to stdin. )
+
+Copy files to and from a container:
+
+    kubectl cp <pod-name>:</path/to/remote/file> </path/to/local/file>
+
+Forward network traffic from local machine through the k8s master to an instance of a pod running on a worker node:
+
+    kubectl port-forward <pod-name> 8080:80
+
+    This enables you to securely tunnel network traffic through to containers that might not be exposed
+    anywhere on the public network
+    ( You can also use the `port-forward` command with services. )
+
+To view resources in use:
+
+    kubectl top {nodes,pods}
+
+Enable tab completion for commands and resources:
+
+    source <(kubectl completion bash)
+
+Create a pod (imperative):
+
+    kubectl run kuard --generator=run-pod/v1 --image=gcr.io/kuar-demo/kuard-amd64:blue
+
+Delete the above pod:
+
+    kubectl delete pods/kuard
+    or
+    kubectl delete pod kuard
+    or
+    kubectl delete -f kuard-pod.yaml
+
+Example Pod manifest:
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kuard
+spec:
+  containers:
+    - name: kuard
+      image: gcr.io/kuar-demo/kuard-amd64:blue
+      ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+
+Liveness probes are defined per container.
+
+With liveness probe:
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kuard
+spec:
+  containers:
+    - name: kuard
+      image: gcr.io/kuar-demo/kuard-amd64:blue
+      livenessProbe:
+        httpGet:
+          path: /healthy
+          port: 8080
+        initialDelaySeconds: 5 # Will not be called until 5 seconds after all the containers in the pod have been created.
+        timeoutSeconds: 1      # The probe must respond within 1 second.
+        periodSeconds: 10      # Will call probe every 10 seconds.
+        failureThreshold: 3    # Container will fail and restart after 3 successive failures.
+      ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+
+          ( The actual behaviour of the liveness probe is governed by the Pod's `restartPolicy` - Always - the default -, OnFailure or Never. )
+
+There are also readiness checks, which check to ensure that the container is ready to serve user requests.
+If a readiness check fails, the container is removed from service load balancers.
+
+There are also "tcpSocket" and "exec" health checks.
+
+k8s allows users to specify two different metrics to describe utilization (efficiency): resource requests and resource limits.
+
+Resource requests are used when scheduling nodes to pods.
+The k8s scheduler ensures that the sum of all the resource requests doesn't exceed the capacity of the node.
+"Request" specifies a minimum.
+
+Resource limits set the maximum of a pod's resource usage.
+When setting limits, the kernel is configured to ensure that consumption cannot exceed these limits.
+For instance, `malloc` will fail if trying to allocate more memory than its limit.
+
+Using volumes with pods.
+The "emptyDir" config is good for sharing between containers colocated on the same pod and last the lifetime of the pod.
+Good for caching and synchronization.
+The "hostPath" config provides access to the underlying host filesystem. It mounts arbitrary locations on the worker node into the container.
+
+Also, supports NFS and network storage volumes.
+
+Once the scheduler schedules a pod to a node, the kubelet daemon on the node is responsible for creating the container(s) and doing any health checks.
+If a pod fails, no rescheduling occurs. This is done only for replicas, done by hand or defined in a ReplicaSet object.
+
+Labels: hold identifying information. Used for identifying and grouping (runtime) objects.
+Annotations: hold non-identifying information. Used by tooling. Examples include adding information like a git hash, timestamp, PR number, etc.
+**They provide the starting point for building automation tools and deployment workflows.**
+
+For a complete list of supported resources:
+
+    kubectl api-resources
+
+Apply or update a label on objects after they've been created:
+
+    kubectl label deployments alpaca-test "canary=true"
+
+    ( Note this only affects the deployment itself and not any object it creates like Pods or ReplicaSets. )
+
+To remove it:
+
+    kubectl label deployments alpaca-test "canary-"
+
+To show the label value (ver) as a column:
+
+    kubectl get deployments -L ver
+
+Label selectors are used to filter k8s objects based on a set of labels:
+
+    kubectl get pods --selector "ver=2"
+    kubectl get pods --selector "app=bandicoot,ver=2" # Logical AND
+    kubectl get pods --selector "app in (alpaca,bandicoot)" # Logical OR (is it in the set?)
+    kubectl get deployments --selector "foo" # Is the label set at all? (asking for all deployments with "foo" set to anything)
+
+    ( and each one has a negative version )
+    kubectl get pods --selector "ver!=2"
+    kubectl get pods --selector "app notin (alpaca,bandicoot)" # Logical OR (is it in the set?)
+    kubectl get deployments --selector='!canary'
+
+    And they can be combined!
+    kubectl get pods -l 'ver=2,!canary'
+
+The primary use case for annotations is rolling deployments.
+During rolling deployments, annotations are used to track rollout status and provide the necessary information required to roll back a
+deployment to a previous state.
+Annotations are good for small bits of data that are highly associated with a specific resource.
+The Kubernetes server has no knowledge of the required format of annotation values.
+
+To remove all deployments:
+
+    kubectl delete deployments --all
+    or
+    kubectl delete deployments --selector <label>
+
+To get the endpoints of a service:
+
+    kubectl get endpoints alpaca-prod
+    ( These endpoints are the IPs of the pods. )
+
+Watch the endpoints:
+
+    kubectl get endpoints alpaca-prod --watch
+
+The Service object was created to keep the correct set of labels to use in sync for a group of Pods.
+
+To do rudimentary service discovery (without using a Service):
+
+    kubectl get pods -o wide --selector app=alpaca,env=prod
+
+Cluster IPs are stable virtual IPs that load-balance traffic across all of the endpoints in a service
+
+The kube-proxy watches for new services in the cluster via the API server. It then programs a set of iptables rules in the kernel of that host to rewrite
+the destinations of packets so they are directed at one of the endpoints for that ser‐ vice. If the set of endpoints for a service changes (due to Pods coming and going or
+due to a failed readiness check), the set of iptables rules is rewritten
+
+Delete multiple objects with a label selector:
+
+    kubectl delete services,deployments -l app
+
+The Ingress object is used to solve problems where traditionally virtual hosts were used.
+It operates on Layer 7 (HTTP/application) of the OSI model.
+( Services operate at Layer 4 (Transport) layer.
+
+Ingress is a Kubernetes-native way to implement the “virtual hosting” pattern.
+An Ingress is split into a common resource specification and a controller implementation.
+
+There is no standard native k8s Ingress controller so the user must install one.
+( I think that there are now extensions for them so it's not necessary to download one. )
+Here, we'll install Contour (https://github.com/projectcontour/contour).
+It configures the open source load balancer Envoy.
+
+Install Contour:
+
+    kubectl apply -f https://j.hept.io/contour-deployment-rbac
+
+List all namespaces:
+
+    kubectl get namespaces
+
+Get ingress objects:
+
+    kubectl get ingress
+
+An ingress object can only point to an upstream service in the same namespace!
+
+A ReplicaSet acts as a cluster-wide Pod manager, ensuring that the right types and number of Pods
+are running at all times.
+Managing the replicated pods is done with a reconciliation loop.
+ReplicaSets create and manage the Pods they create, but they do not own them. They are decoupled
+from the Pods they manage.
+ReplicaSets are designed to represent a single, scalable microservice inside your architecture.
+Designed for stateless service.
+
+Find what ReplicaSet created a Pod:
+
+    kubectl get pod kuard -o{yaml,json}
+
+Scale up the number of Pods managed by a ReplicaSet:
+
+    kubectl scale replicasets kuard --replicas=4
+
+Autoscale:
+
+    kubectl autoscale rs kuard --min=2 --max=5 --cpu-percent=80
+
+THEN run:
+
+    kubectl get hpa (horizontalpodautoscalers)
+
+Delete a rs and the Pods it manages:
+
+    kubectl delete rs kuard
+
+To only delete the rs and NOT the Pods it manages:
+
+    kubectl delete rs kuard --cascade false
+
+Just as ReplicaSets manage Pods, Deployments manage ReplicaSets.
+Like all relationships in k8s, the relationships are designed by labels and a label selector.
+
+Resize the deployment:
+
+    kubectl scale deployments kuard --replicas 2
+
+Scaling the deployment also scales the rs it manages.
+BUT changes the number of pods that the rs managed DOES NOT affect the number of pods because
+that number MUST match the definition of the deployment!
+
+To manage the rs directly, the deployment must first be deleted (and set `--cascade` to false).
+
+Save a new version with more information and annotations:
+
+    kubectl get deployments kuard --export -o yaml >| kuard-deployment.yaml
+
+Add an annotation so that, when applying changes in the future, kubectl will know what the last applied configuration
+was for smarter merging of configs. If you always use `kubectl apply`, this step is only required after the first time
+you create a deployment using `kubectl create -f`.
+
+    kubectl replace -f kuard-deployment.yaml --save-config
+
+Two types of strategies supported by deployments: Recreate and RollingUpdate.
+
+Get a history of rollouts for a deployment:
+
+    kubectl rollout history deployment kuard
+
+Get status of a current deployment in progress:
+
+    kubectl rollout status deployment kuard
+
+After updating the image in a deployment object, add an annotation.
+A modification of `change-cause` will trigger a new rollout:
+
+...
+spec:
+ ...
+ template:
+ metadata:
+ annotations:
+ kubernetes.io/change-cause: "Update to green kuard"
+...
+
+Then:
+
+    kubectl apply -f kuard-deployment.yaml
+    kubectl rollout status deployments kuard
+    ( The old replica sets are kept around in case of a rollback. )
+
+To pause a rollout:
+
+    kubectl rollout pause deployments kuard
+
+To start off where you left off:
+
+    kubectl rollout resume deployments kuard
+
+To see details of a particular rollout:
+
+    kubectl rollout pause deployments kuard --revision 3
+
+To undo the last rollout:
+
+    kubectl rollout undo deployments kuard
+    ( An undo is a rollout in reverse. )
+
+To rollback (undo) to a specific version:
+
+    kubectl rollout undo deployments kuard --to-revision 3
+
+The following is equivalent:
+
+    kubectl rollout undo == kubectl rollout undo --to-revision 0
+
+The complete revision history is kept attached to the deployment object itself.
+
+The Recreate strategy is equal to the RollingUpdate strategy with `maxUnavailable` set to 100%.
+`maxSurge` set to 100% is equal to a blue/green deployment.
+
+`minReadySeconds` is the amount of time the deployment controller must wait after seeing a Pod
+become healthy before moving on to updating a new one.
+
+To set a timeout, use `progressDeadlineSeconds`.
+
+Deleting a Deployment will also delete an ReplicaSets it manages and any Pods they in turn manage.
+Set `--cascade false` to only delete the Deployment object itself.
+
+DaemonSets are similar to ReplicaSets, but DaemonSets must be used when a Pod should be scheduled
+on every Node in a cluster (or a subset of the Nodes).
+By default a DaemonSet creates a Pod on every Node, unless a Node selector is usd.
+Pods created by DaemonSets are ignored by the k8s scheduler.
+DaemonSets are managed by a reconciliation control loop.
+Great for logging daemons (fluentd) and other kinds of services that are wanted cluster-wide.
+
+Describe state of DaemonSet:
+
+    kubectl describe daemonset fluentd
+
+Node selectors can be used to limit what nodes a Pod can run on in a given k8s cluster.
+
+DaemonSets can be rolled out using the same RollingUpdate strategy that deploy ments use. You can
+configure the update strategy using the `spec.updateStrategy.type` field, which should have the
+value `RollingUpdate`. When a DaemonSet has an update strategy of `RollingUpdate`, any change to
+the `spec.template` field (or subfields) in the DaemonSet will initiate a rolling update.
+
+Show the current rollout status of a DaemonSet:
+
+     kubectl rollout status daemonSets my-daemon-set
+
+ To create a oneshot job:
+
+    kubectl run -i oneshot --image=gcr.io/kuar-demo/kuard-amd64:blue --restart=OnFailure
+    ( the --restart=OnFailure config tells k8s to create a Job object. )
+
+By default, k8s Job objects will create a unique label.
+
+Describe a Job:
+
+    kubectl describe jobs oneshot
+
+View the logs:
+
+     kubectl logs oneshot-4kfdt
+
+`kind: CronJob` will create a Job object.
+
+ConfigMaps:
+- can think of them as an object that defines small filesystem for the containers
+- a set of vars that can be used when defining the environment or command line for the containers
+
+Imperative example:
+
+cat > my-config.txt
+parameter1 = value1
+parameter2 = value2
+
+kubectl create configmap my-config \
+  --from-file=my-config.txt \
+  --from-literal=extra-param=extra-value \
+  --from-literal=another-param=another-value
+
+Get results as yaml:
+
+    kubectl get configmaps my-config -o yaml
+
+------------------------------------------------------------
+
+apiVersion: v1
+data:
+  another-param: another-value
+  extra-param: extra-value
+  my-config.txt: |+
+    parameter1 = value1
+    parameter2 = value2
+
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2021-01-02T22:48:39Z"
+  name: my-config
+  namespace: default
+  resourceVersion: "1513425"
+  selfLink: /api/v1/namespaces/default/configmaps/my-config
+  uid: 7839515c-e41c-4dd1-ab17-7ab498fee9a8
+
+------------------------------------------------------------
+
+To use this, you can do:
+
+    kubectl apply -f kuard-config.yaml
+    kubectl port-forward kuard-config 8080
+
+Then, look at the fs tab and the contents of the `/config` dir.
+
+Three main ways to use a ConfigMap:
+1. Filesystem
+2. Environment variable
+3. Command-line argument
+
+Secrets can be consumed via the k8s REST API (API server) and through a secrets volume.
+Secrets volumes are managed by the kubelet and are created at Pod creation time.
+Further, they are only stored in memory using tmpfs and are never written to disk.
+
+If you are repeatedly pulling from the same (docker) registry, you can add the secrets to the
+default service account associated with each Pod to avoid having to specify the secrets
+in every Pod you create.
+
+The key names for data items inside of a secret or ConfigMap are defined to map to
+valid environment variable names.
+
+Secrets and ConfigMaps are managed through the Kubernetes API.
+
+Get raw data secrets (plaintext):
+
+    kubectl get secrets kuard-tls -oyaml
+
+Example of updating a Secret:
+
+     kubectl create secret generic kuard-tls \
+     --from-file=kuard.crt --from-file=kuard.key \
+     --dry-run -o yaml | kubectl replace -f -
+
+Once a ConfigMap or secret is updated using the API, it’ll be automatically pushed to
+all volumes that use that ConfigMap or secret.
+
+View pre-defined roles:
+
+    kubectl get clusterroles
+
+And view the bindings:
+
+    kubectl get clusterrolebindings
+
+Use auth `can-i` to see what you have permissions to do:
+
+    kubectl auth can-i create pods
+
+Also, on subresources:
+
+    kubectl auth can-i get pods --subresource=logs
+    kubectl auth can-i get pods --subresource=port-forward
+
+To reconcile data in the file with the cluster:
+
+    kubectl auth reconcile -f some-rbac-config.yaml
+    kubectl auth reconcile -f some-rbac-config.yaml --dry-run
+
+Create a secret imperatively:
+
+    kubectl create secret tls <secret-name> --cert <certificate-pem-file> -- key <private-key-pem-file>
+
